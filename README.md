@@ -7,20 +7,22 @@ Mainly used for logging purposes but can be use for access control.
 Request to|logicaladdress is read to env variable rivta_to_hsaid.
 Reply error is assume to be in VPXXX format and is read to env variable rivta_vp_error else variable get value 'Error' 
 
-see http://rivta.se/ for RIVTA ref
-=========
+See [http://rivta.se/] RIVTA for ref
 
+=========
+```
 Load mod:
 LoadModule rivta_module modules/mod_rivta.so
 
 Config per location:
-#enable read header
+
+#Enable read header
 RivtaEnabled On
 
-#enable read reply error (http status >400)
+#Enable read reply error (http status >400)
 RivtaEnabledError On
 
-#enable read reply error (http status >500)
+#Enable read reply error (http status >500)
 RivtaEnabledError 500
 
 Config ex:
@@ -28,10 +30,11 @@ Config ex:
 LoadModule rivta_module modules/mod_rivta.so
 ...
 LogFormat "\"%{rivta_to_hsaid}e\",\"%{rivta_vp_error}e\""
-..
+...
 <Location /some/>
   RivtaEnabled On
   RivtaEnabledError On
   
   SSLRequire 		%{ENV:rivta_to_hsaid} eq "HSAid"
 </Location>
+```
