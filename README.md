@@ -7,7 +7,7 @@ Mainly used for logging purposes but can be use for access control.
 Request to|logicaladdress is read to env variable rivta_to_hsaid.
 Reply error is assume to be in VPXXX format and is read to env variable rivta_vp_error else variable get value 'Error' 
 
-See [http://rivta.se/] RIVTA for ref
+See [RIVTA](http://rivta.se/) for ref
 
 =========
 ```
