@@ -137,6 +137,8 @@ static int setRivtaEnv(request_rec *r, char *data)
 			index = pmatch[0].rm_eo;
 			while (data[index] != '<')
 			{
+				if (data[index] == '>')
+					Sindex = index+1;
 				index++;
 				if (index >= DataLen)
 				{
@@ -144,12 +146,12 @@ static int setRivtaEnv(request_rec *r, char *data)
 					break;
 				}
 			}
-
+			
 			if (!error)
 			{
-				matchSize = index - pmatch[0].rm_eo;
+				matchSize = index - Sindex;
 				HSAID = (char *)apr_pcalloc(r->pool, matchSize);
-				HSAID = apr_pstrndup(r->pool, data + pmatch[0].rm_eo, matchSize);
+				HSAID = apr_pstrndup(r->pool, data + Sindex, matchSize);
 
 				apr_table_setn(r->subprocess_env, "rivta_to_hsaid", HSAID);
 				ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:rivta_to_hsaid: Found HSAID: %s", HSAID);
@@ -789,7 +791,7 @@ The hook registration function (also initializes the default config values):
 static void rivta_register_hooks(apr_pool_t *pool)
 {
 	//LogicalAddressFilter = ap_pregcomp(pool, ":(to|logicaladdress)(.+)<\/(.+):(to|logicaladdress)", AP_REG_EXTENDED | AP_REG_ICASE);
-	LogicalAddressFilter = ap_pregcomp(pool, ":(to|logicaladdress)>", AP_REG_EXTENDED | AP_REG_ICASE);
+	LogicalAddressFilter = ap_pregcomp(pool, ":(to|logicaladdress)", AP_REG_EXTENDED | AP_REG_ICASE);
 	//NameSpaceFilter = ap_pregcomp(pool, "xmlns:urn(|[1-9])=\"(.+?)\"", AP_REG_EXTENDED | AP_REG_ICASE);
 	//xmlnsName = ap_pregcomp(pool, ":Body>(.+?)<(.+?):", AP_REG_EXTENDED | AP_REG_ICASE);
 	ResponderFilter = ap_pregcomp(pool, "Responder:[0-9]\"", AP_REG_EXTENDED | AP_REG_ICASE);
