@@ -103,7 +103,7 @@ static int setRivtaEnv(request_rec *r, char *data)
 		while (data[index] != '\"')
 		{
 			index--;
-			if (index <= 0)
+			if (index <= 0 || index >= DataLen)
 			{
 				error = 1;
 				break;
@@ -120,7 +120,10 @@ static int setRivtaEnv(request_rec *r, char *data)
 			ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:rivta_namespace: Found NameSpace: %s", NameSpace);
 		}
 		else
+		{
 			ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:rivta_namespace: Index out of bounds");
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mod_rivta:rivta_namespace: %s", data);
+		}
 	}
 	else
 	{
@@ -203,7 +206,10 @@ static int setRivtaEnv(request_rec *r, char *data)
 				}
 			}
 			else
+			{
 				ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:rivta_to_hsaid: Index out of bounds");
+				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mod_rivta: %s", data);
+			}
 		}
 		else
 		{
