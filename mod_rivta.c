@@ -103,7 +103,7 @@ static int setRivtaEnv(request_rec *r, char *data)
 		while (data[index] != '\"')
 		{
 			index--;
-			if (index <= 0 || index >= DataLen)
+			if (index <= 0 && index >= DataLen)
 			{
 				error = 1;
 				break;
