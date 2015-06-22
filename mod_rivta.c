@@ -75,12 +75,12 @@ else
 	look if header tag exist
 	write to log
 */
-static int setRivtaEnv(request_rec *r, char *data)
+static int setRivtaEnv(request_rec *r, char *data, apr_size_t DataLen)
 {
 	ap_regmatch_t pmatch[1];
 	apr_size_t matchSize;
 	char *NameSpace;
-	char *LogicalAddress;
+	//char *LogicalAddress;
 	char *HSAID;
 	char *HSAIDTmp;
 	char *buf = "rivta_to_hsaid ";
@@ -89,25 +89,33 @@ static int setRivtaEnv(request_rec *r, char *data)
 	int Sindex = 0;
 	int Eindex = 0;
 	int error = 0;
-	int DataLen = strlen(data);
-	int tempLen = 0;
+	//int DataLen = strlen(data);
+	size_t tempLen = 0;
 	int count = 0;
 	
-
+	//ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mod_rivta: DataLen %d", DataLen);
+	//ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:SetRivtaEnv: clength %d remaining %d", r->clength, r->remaining);
 	//ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mod_rivta: data %s", data);
 	//ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mod_rivta: LogicalAddressFilter %d", LogicalAddressFilter);
 	
-	if (!ap_regexec(ResponderFilter, data, 1, pmatch, 0))
+	if (ap_regexec(ResponderFilter, data, 1, pmatch, 0) == 0)
 	{
-		index = pmatch[0].rm_so;
-		while (data[index] != '\"')
+		if (pmatch[0].rm_so < DataLen)
 		{
-			index--;
-			if (index <= 0 && index >= DataLen)
+			index = pmatch[0].rm_so;
+			while (data[index] != '\"')
 			{
-				error = 1;
-				break;
+				index--;
+				if (index <= 0 || data[index] == ' ')
+				{
+					error = 1;
+					break;
+				}
 			}
+		}
+		else
+		{
+			error = 1;
 		}
 
 		if (!error)
@@ -122,26 +130,26 @@ static int setRivtaEnv(request_rec *r, char *data)
 		else
 		{
 			ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:rivta_namespace: Index out of bounds");
-			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mod_rivta:rivta_namespace: %s", data);
+			//ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mod_rivta:rivta_namespace: %s", data);
 		}
 	}
 	else
 	{
 		ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:rivta_namespace: NameSpace Not found");
-		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mod_rivta:rivta_namespace: %s", data);
+		//ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mod_rivta:rivta_namespace: %s", data);
 	}
 
 	//LogicalAddressFilter = ap_pregcomp(r->pool, ":(to(.+)|to|logicaladdress(.+)|logicaladdress)>(.+)<\/(.+):(to|logicaladdress)", AP_REG_EXTENDED | AP_REG_ICASE);
-	if (!ap_regexec(LogicalAddressFilter, data, 1, pmatch, 0))
+	if (ap_regexec(LogicalAddressFilter, data, 1, pmatch, 0) == 0)
 	{
 		//ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mod_rivta: ap_regexec pmatch count: %d", pmatch[0].rm_so);
-		if (pmatch[0].rm_so > -1)
+		if (pmatch[0].rm_so < DataLen)
 		{
 			index = pmatch[0].rm_eo;
 			while (data[index] != '<')
 			{
 				if (data[index] == '>')
-					Sindex = index+1;
+					Sindex = index + 1;
 				index++;
 				if (index >= DataLen)
 				{
@@ -149,73 +157,71 @@ static int setRivtaEnv(request_rec *r, char *data)
 					break;
 				}
 			}
-			
-			if (!error)
+		}
+		else
+		{
+			error = 1;
+		}
+
+		if (!error)
+		{
+			matchSize = index - Sindex;
+			HSAID = (char *)apr_pcalloc(r->pool, matchSize);
+			HSAID = apr_pstrndup(r->pool, data + Sindex, matchSize);
+
+			apr_table_setn(r->subprocess_env, "rivta_to_hsaid", HSAID);
+			ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:rivta_to_hsaid: Found HSAID: %s", HSAID);
+
+			tempLen = strlen(HSAID);
+			index = 0;
+			count = 1;
+			Sindex = 0;
+			while (index < tempLen)
+			{
+				if (HSAID[index] == '#')
+				{
+					if (Sindex > -1)
+					{
+						matchSize = index - Sindex;
+						itoa(count, buf + 14, 10);
+						if (matchSize > 0)
+						{
+							HSAIDTmp = (char *)apr_pcalloc(r->pool, matchSize);
+							HSAIDTmp = apr_pstrndup(r->pool, HSAID + Sindex, matchSize);
+
+							apr_table_setn(r->subprocess_env, buf, HSAIDTmp);
+							ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:%s: Found HSAID: %s", buf, HSAIDTmp);
+						}
+						else
+							ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:%s: Len is 0", buf);
+					}
+					Sindex = index + 1;
+					count++;
+					//ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mod_rivta:rivta_to_hsaid: Found# index %d Sindex %d", index, Sindex);
+				}
+				index++;
+			}
+			//last
+			if (Sindex > 0)
 			{
 				matchSize = index - Sindex;
-				HSAID = (char *)apr_pcalloc(r->pool, matchSize);
-				HSAID = apr_pstrndup(r->pool, data + Sindex, matchSize);
-
-				apr_table_setn(r->subprocess_env, "rivta_to_hsaid", HSAID);
-				ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:rivta_to_hsaid: Found HSAID: %s", HSAID);
-
-				tempLen = strlen(HSAID);
-				index = 0;
-				count = 1;
-				Sindex = 0;
-				while (index < tempLen)
+				itoa(count, buf + 14, 10);
+				if (matchSize > 0)
 				{
-					if (HSAID[index] == '#')
-					{
-						if (Sindex > -1)
-						{
-							matchSize = index - Sindex;
-							itoa(count, buf + 14, 10);
-							if (matchSize > 0)
-							{
-								HSAIDTmp = (char *)apr_pcalloc(r->pool, matchSize);
-								HSAIDTmp = apr_pstrndup(r->pool, HSAID + Sindex, matchSize);
+					HSAIDTmp = (char *)apr_pcalloc(r->pool, matchSize);
+					HSAIDTmp = apr_pstrndup(r->pool, HSAID + Sindex, matchSize);
 
-								apr_table_setn(r->subprocess_env, buf, HSAIDTmp);
-								ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:%s: Found HSAID: %s", buf, HSAIDTmp);
-							}
-							else
-								ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:%s: Len is 0", buf);
-						}
-						Sindex = index + 1;
-						count++;
-						//ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mod_rivta:rivta_to_hsaid: Found# index %d Sindex %d", index, Sindex);
-					}
-					index++;
+					apr_table_setn(r->subprocess_env, buf, HSAIDTmp);
+					ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:%s: Found HSAID: %s", buf, HSAIDTmp);
 				}
-				//last
-				if (Sindex > 0)
-				{
-					matchSize = index - Sindex;
-					itoa(count, buf + 14, 10);
-					if (matchSize > 0)
-					{
-						HSAIDTmp = (char *)apr_pcalloc(r->pool, matchSize);
-						HSAIDTmp = apr_pstrndup(r->pool, HSAID + Sindex, matchSize);
-
-						apr_table_setn(r->subprocess_env, buf, HSAIDTmp);
-						ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:%s: Found HSAID: %s", buf, HSAIDTmp);
-					}
-					else
-						ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:%s: Len is 0", buf);
-				}
-			}
-			else
-			{
-				ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:rivta_to_hsaid: Index out of bounds");
-				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mod_rivta: %s", data);
+				else
+					ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:%s: Len is 0", buf);
 			}
 		}
 		else
 		{
-
-			ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:rivta_to_hsaid: Not found");
-			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mod_rivta: %s", data);
+			ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:rivta_to_hsaid: Index out of bounds");
+			//ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mod_rivta: %s", data);
 		}
 	}
 	else
@@ -225,9 +231,9 @@ static int setRivtaEnv(request_rec *r, char *data)
 		ap_regmatch_t soapenmatch2[1];
 		//ap_regmatch_t *soapenvHeaderFilter1 = ap_pregcomp(r->pool, ":Header>", AP_REG_EXTENDED | AP_REG_ICASE);
 		//ap_regmatch_t *soapenvHeaderFilter2 = ap_pregcomp(r->pool, "<\/(.+):Header>", AP_REG_EXTENDED | AP_REG_ICASE);
-		if (!ap_regexec(soapenvHeaderFilter1, data, 1, soapenmatch1, 0) && !ap_regexec(soapenvHeaderFilter2, data, 1, soapenmatch2, 0))
+		if (ap_regexec(soapenvHeaderFilter1, data, 1, soapenmatch1, 0) == 0 && ap_regexec(soapenvHeaderFilter2, data, 1, soapenmatch2, 0) == 0)
 		{
-			if (soapenmatch1[0].rm_so > -1)
+			if (soapenmatch1[0].rm_so < DataLen && soapenmatch2[0].rm_so < DataLen)
 			{
 				//Copy to mem
 				matchSize = soapenmatch2[0].rm_eo - soapenmatch1[0].rm_so;
@@ -239,8 +245,8 @@ static int setRivtaEnv(request_rec *r, char *data)
 			}
 			else
 			{
-				ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:soapenvHeader: Reg seach return bad!");
-				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mod_rivta: %s", data);
+				ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta:rivta_to_hsaid: Index out of bounds");
+				//ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "mod_rivta: %s", data);
 			}
 		}
 		else
@@ -347,6 +353,7 @@ int ssl_io_buffer_fill(request_rec *r, apr_size_t maxlen) {
 	apr_off_t total = 0; /* total length buffered */
 	int eos = 0; /* non-zero once EOS is seen */
 	int readDone = 0;
+	//int DataLen = 0;
 
 	/* Create the context which will be passed to the input filter;
 	* containing a setaside pool and a brigade which constrain the
@@ -362,12 +369,11 @@ int ssl_io_buffer_fill(request_rec *r, apr_size_t maxlen) {
 	do {
 		apr_status_t rv;
 		apr_bucket *e, *next;
-
+		
 		/* The request body is read from the protocol-level input
 		* filters; the buffering filter will reinject it from that
 		* level, allowing content/resource filters to run later, if
 		* necessary. */
-
 		rv = ap_get_brigade(r->proto_input_filters, tempb, AP_MODE_READBYTES,
 			APR_BLOCK_READ, 8192);
 		if (rv) {
@@ -380,7 +386,6 @@ int ssl_io_buffer_fill(request_rec *r, apr_size_t maxlen) {
 		* into the context's pool and move it into the brigade. */
 		for (e = APR_BRIGADE_FIRST(tempb);
 			e != APR_BRIGADE_SENTINEL(tempb) && !eos; e = next) {
-			const char *data;
 			apr_size_t len;
 
 			next = APR_BUCKET_NEXT(e);
@@ -389,25 +394,31 @@ int ssl_io_buffer_fill(request_rec *r, apr_size_t maxlen) {
 				eos = 1;
 			}
 			else if (!APR_BUCKET_IS_METADATA(e)) {
-				rv = apr_bucket_read(e, &data, &len, APR_BLOCK_READ);
-
-				//ap_log_rerror(APLOG_MARK, APLOG_ERR, rv, r, APLOGNO(02016)"data buffer: %s", data);
-
-				//apr_table_setn(r->subprocess_env, "X-My-Header-Insert", data);
-
-				//if data is more then 300 char we suspect that we have read RIVTA header from payload
-				//read only ones
-				if (!readDone && len > 300)
-				{
-					readDone = 1;
-					setRivtaEnv(r, data);
-				}
-
+				char *dataTemp;
+				rv = apr_bucket_read(e, &dataTemp, &len, APR_BLOCK_READ);
 				if (rv != APR_SUCCESS) {
 					ap_log_rerror(APLOG_MARK, APLOG_ERR, rv, r,
 						APLOGNO(02016)
 						"could not read bucket for SSL buffer");
 					return HTTP_INTERNAL_SERVER_ERROR;
+				}
+				
+				//ap_log_rerror(APLOG_MARK, APLOG_ERR, rv, r, APLOGNO(02016)"data buffer: %s", data);
+
+				//apr_table_setn(r->subprocess_env, "X-My-Header-Insert", data);
+
+				//if data is more then 300 char we suspect that we have read RIVTA header from payload
+				//read only ones				
+				if (!readDone && len > 300)
+				{
+					//copy data only len of data bucket read
+					//char *data;
+					//data = (char *)apr_pcalloc(r->pool, len);
+					//data = apr_pstrndup(r->pool, dataTemp, len);
+					//ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "mod_rivta: %s", data);
+
+					readDone = 1;
+					setRivtaEnv(r, dataTemp, len);
 				}
 				total += len;
 			}
@@ -590,11 +601,11 @@ static int rivta_output_filter(ap_filter_t *f, apr_bucket_brigade *bb)
 {
 
 	apr_bucket *b;
-	apr_status_t ret;
+	//apr_status_t ret;
 	rivta_config *config = f->ctx;
 	int status,returnvalue;
-	char *teststatus;
-	char *data;
+	//char *teststatus;
+	//char *data;
 	apr_bucket *SoapBegin, *SoapEnd;
 	//teststatus = apr_table_get(f->r->headers_out, "http.status");
 	//ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, f->r, "mod_rivta out filter: ");
@@ -609,7 +620,7 @@ static int rivta_output_filter(ap_filter_t *f, apr_bucket_brigade *bb)
 		{
 			for (b = APR_BRIGADE_FIRST(bb); b != APR_BRIGADE_SENTINEL(bb); b = APR_BUCKET_NEXT(b)) {
 
-				const char *buf;
+				char *buf;
 				apr_size_t nbytes;
 				apr_status_t rv = apr_bucket_read(b, &buf, &nbytes, APR_BLOCK_READ);
 
